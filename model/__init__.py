@@ -1,7 +1,9 @@
 from .nlp.BasicBert import BasicBert
+from .UASMLSTM.model import UASMLSTM
 
 model_list = {
-    "BasicBert": BasicBert
+    "BasicBert": BasicBert,
+    "UASMLSTM": UASMLSTM
 }
 
 
