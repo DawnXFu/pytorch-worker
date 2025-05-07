@@ -1,9 +1,10 @@
 import json
-import torch
 import os
+
+import torch
 import torchvision.transforms as transforms
 
-from formatter.Basic import BasicFormatter
+from data_formatter.Basic import BasicFormatter
 
 
 class BasicResnetFormatter(BasicFormatter):

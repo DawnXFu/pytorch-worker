@@ -1,7 +1,8 @@
-from torch.utils.data import DataLoader
 import logging
 
-import formatter as form
+from torch.utils.data import DataLoader
+
+import data_formatter as form
 from dataset import dataset_list
 
 logger = logging.getLogger(__name__)
@@ -38,7 +39,9 @@ def init_one_dataset(config, mode, *args, **params):
             config.get("data", "%s_dataset_type" % temp_mode)
         except Exception as e:
             logger.warning(
-                "[reader] %s_dataset_type has not been defined in config file, use [dataset] train_dataset_type instead." % temp_mode)
+                "[reader] %s_dataset_type has not been defined in config file, use [dataset] train_dataset_type instead."
+                % temp_mode
+            )
             temp_mode = "train"
     which = config.get("data", "%s_dataset_type" % temp_mode)
 
@@ -67,12 +70,14 @@ def init_one_dataset(config, mode, *args, **params):
             except Exception as e:
                 logger.warning("[eval] reader num has not been defined in config file, use [train] reader num instead.")
 
-        dataloader = DataLoader(dataset=dataset,
-                                batch_size=batch_size,
-                                shuffle=shuffle,
-                                num_workers=reader_num,
-                                collate_fn=collate_fn[mode],
-                                drop_last=drop_last)
+        dataloader = DataLoader(
+            dataset=dataset,
+            batch_size=batch_size,
+            shuffle=shuffle,
+            num_workers=reader_num,
+            collate_fn=collate_fn[mode],
+            drop_last=drop_last,
+        )
 
         return dataloader
     else:

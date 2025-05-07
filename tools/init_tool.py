@@ -1,9 +1,10 @@
 import logging
-import torch
 
-from reader.reader import init_dataset, init_formatter, init_test_dataset
+import torch
 from model import get_model
 from model.optimizer import init_optimizer
+from reader.reader import init_dataset, init_formatter, init_test_dataset
+
 from .output_init import init_output_function
 
 logger = logging.getLogger(__name__)

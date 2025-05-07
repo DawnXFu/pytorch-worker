@@ -1,10 +1,10 @@
 import logging
 import os
-import torch
-from torch.autograd import Variable
 from timeit import default_timer as timer
 
+import torch
 from tools.eval_tool import gen_time_str, output_value
+from torch.autograd import Variable
 
 logger = logging.getLogger(__name__)
 
@@ -40,9 +40,16 @@ def test(parameters, config, gpu_list):
         if step % output_time == 0:
             delta_t = timer() - start_time
 
-            output_value(0, "test", "%d/%d" % (step + 1, total_len), "%s/%s" % (
-                gen_time_str(delta_t), gen_time_str(delta_t * (total_len - step - 1) / (step + 1))),
-                         "%.3lf" % (total_loss / (step + 1)), output_info, '\r', config)
+            output_value(
+                0,
+                "test",
+                "%d/%d" % (step + 1, total_len),
+                "%s/%s" % (gen_time_str(delta_t), gen_time_str(delta_t * (total_len - step - 1) / (step + 1))),
+                "%.3lf" % (total_loss / (step + 1)),
+                output_info,
+                "\r",
+                config,
+            )
 
     if step == -1:
         logger.error("There is no data given to the model in this epoch, check your data.")
@@ -50,8 +57,15 @@ def test(parameters, config, gpu_list):
 
     delta_t = timer() - start_time
     output_info = "testing"
-    output_value(0, "test", "%d/%d" % (step + 1, total_len), "%s/%s" % (
-        gen_time_str(delta_t), gen_time_str(delta_t * (total_len - step - 1) / (step + 1))),
-                 "%.3lf" % (total_loss / (step + 1)), output_info, None, config)
+    output_value(
+        0,
+        "test",
+        "%d/%d" % (step + 1, total_len),
+        "%s/%s" % (gen_time_str(delta_t), gen_time_str(delta_t * (total_len - step - 1) / (step + 1))),
+        "%.3lf" % (total_loss / (step + 1)),
+        output_info,
+        None,
+        config,
+    )
 
     return result

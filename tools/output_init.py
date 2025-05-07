@@ -1,8 +1,9 @@
-from .output_tool import basic_output_function, null_output_function
+from .output_tool import basic_output_function, null_output_function, precipitation_output_function
 
 output_function_dic = {
     "Basic": basic_output_function,
-    "Null": null_output_function
+    "Precipition": precipitation_output_function,
+    "Null": null_output_function,
 }
 
 

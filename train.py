@@ -1,25 +1,31 @@
 import argparse
-import os
-import torch
 import logging
+import os
 
-from tools.init_tool import init_all
+import torch
 from config_parser import create_config
+from tools.init_tool import init_all
 from tools.train_tool import train
 
-logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
-                    datefmt='%m/%d/%Y %H:%M:%S',
-                    level=logging.INFO)
+logging.basicConfig(
+    format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s", datefmt="%m/%d/%Y %H:%M:%S", level=logging.INFO
+)
 
 logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', '-c', help="specific config file", required=True)
-    parser.add_argument('--gpu', '-g', help="gpu id list")
-    parser.add_argument('--checkpoint', help="checkpoint file path")
-    parser.add_argument('--do_test', help="do test while training or not", action="store_true")
-    parser.add_argument('--local_rank', help='local rank', default=0)
+    # parser.add_argument('--config', '-c', help="specific config file", required=True)
+    # parser.add_argument('--gpu', '-g', help="gpu id list")
+    # parser.add_argument('--checkpoint', help="checkpoint file path")
+    # parser.add_argument('--do_test', help="do test while training or not", action="store_true")
+    # parser.add_argument('--local_rank', help='local rank', default=0)
+
+    parser.add_argument("--config", "-c", help="specific config file", default="config/UASMLSTM/UASMLSTM.config")
+    parser.add_argument("--gpu", "-g", help="gpu id list", default="0")
+    parser.add_argument("--checkpoint", help="checkpoint file path", default="mnt/h/DataSet/checkpoint/")
+    parser.add_argument("--do_test", help="do test while training or not", action="store_true")
+    parser.add_argument("--local_rank", help="local rank", default=0)
     args = parser.parse_args()
 
     configFilePath = args.config

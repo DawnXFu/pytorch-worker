@@ -1,10 +1,10 @@
 import json
-import torch
 import os
 
+import torch
 from pytorch_transformers.tokenization_bert import BertTokenizer
 
-from formatter.Basic import BasicFormatter
+from data_formatter.Basic import BasicFormatter
 
 
 class BasicBertFormatter(BasicFormatter):
@@ -27,7 +27,7 @@ class BasicBertFormatter(BasicFormatter):
 
             while len(token) < self.max_len:
                 token.append("[PAD]")
-            token = token[0:self.max_len]
+            token = token[0 : self.max_len]
             token = self.tokenizer.convert_tokens_to_ids(token)
 
             input.append(token)
@@ -39,6 +39,6 @@ class BasicBertFormatter(BasicFormatter):
             label = torch.LongTensor(label)
 
         if mode != "test":
-            return {'input': input, 'label': label}
+            return {"input": input, "label": label}
         else:
             return {"input": input}

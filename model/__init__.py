@@ -1,10 +1,6 @@
-from .nlp.BasicBert import BasicBert
 from .UASMLSTM.model import UASMLSTM
 
-model_list = {
-    "BasicBert": BasicBert,
-    "UASMLSTM": UASMLSTM
-}
+model_list = {"UASMLSTM": UASMLSTM}
 
 
 def get_model(model_name):

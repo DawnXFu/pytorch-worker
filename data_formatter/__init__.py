@@ -1,15 +1,11 @@
 import logging
 
-from .Basic import BasicFormatter
-from .nlp.BasicBertFormatter import BasicBertFormatter
-from .cv.BasicResnetFormatter import BasicResnetFormatter
+from .UASMLSTM.PreCorrectFormaater import PreCorrectFormatter
 
 logger = logging.getLogger(__name__)
 
 formatter_list = {
-    "Basic": BasicFormatter,
-    "BasicBert": BasicBertFormatter,
-    "BasicResnet": BasicResnetFormatter
+    "PreCorrect_UASMLSTM": PreCorrectFormatter,
 }
 
 
@@ -20,7 +16,9 @@ def init_formatter(config, mode, *args, **params):
             config.get("data", "%s_formatter_type" % temp_mode)
         except Exception as e:
             logger.warning(
-                "[reader] %s_formatter_type has not been defined in config file, use [dataset] train_formatter_type instead." % temp_mode)
+                "[reader] %s_formatter_type has not been defined in config file, use [dataset] train_formatter_type instead."
+                % temp_mode
+            )
             temp_mode = "train"
     which = config.get("data", "%s_formatter_type" % temp_mode)
 

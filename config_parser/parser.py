@@ -1,6 +1,6 @@
 import configparser
-import os
 import functools
+import os
 
 
 class ConfigParser:
@@ -35,7 +35,7 @@ def _build_func(func_name):
 
 def create_config(path):
     for func_name in dir(configparser.RawConfigParser):
-        if not func_name.startswith('_') and func_name != "read":
+        if not func_name.startswith("_") and func_name != "read":
             setattr(ConfigParser, func_name, _build_func(func_name))
 
     config = ConfigParser()
