@@ -1,149 +1,162 @@
-import argparse
-import concurrent.futures
+import glob
+import logging
 import os
-import random
-import shutil
-from pathlib import Path
+import time
 
-from tqdm import tqdm  # 添加进度条支持
+import numpy as np
+import xarray as xr
+from tqdm import tqdm  # 添加进度条
+
+# 配置日志
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
+logger = logging.getLogger(__name__)
 
 
-def split_data(
-    source_dir,
-    target_base_dir,
-    train_ratio=0.7,
-    valid_ratio=0.15,
-    test_ratio=0.15,
-    copy_files=True,
-    seed=42,
-    num_workers=8,
+def convert_batch_files_precision(
+    input_dir, output_dir=None, target_dtype="float32", overwrite=False, file_pattern="*.nc"
 ):
     """
-    将源文件夹中的数据按照指定比例划分到训练集、验证集和测试集
+    将批次文件中的变量从float64转换为float32
 
     参数:
-        source_dir (str): 源数据文件夹路径
-        target_base_dir (str): 目标文件夹的基础路径
-        train_ratio (float): 训练集比例，默认0.7
-        valid_ratio (float): 验证集比例，默认0.15
-        test_ratio (float): 测试集比例，默认0.15
-        copy_files (bool): 是否复制文件而不是移动，默认True
-        seed (int): 随机种子，确保结果可复现，默认42
-        num_workers (int): 并行工作线程数，默认8
+    input_dir: 包含批次文件的目录
+    output_dir: 输出转换后文件的目录，如果为None且overwrite=True则覆盖原文件
+    target_dtype: 目标数据类型，默认为'float32'
+    overwrite: 是否覆盖原文件
+    file_pattern: 文件匹配模式
     """
-    # 验证比例之和是否为1
-    if abs(train_ratio + valid_ratio + test_ratio - 1.0) > 1e-10:
-        raise ValueError("比例之和必须等于1")
+    start_time = time.time()
 
-    # 设置随机种子
-    random.seed(seed)
+    # 确保输出目录存在
+    if output_dir is not None:
+        os.makedirs(output_dir, exist_ok=True)
+    elif not overwrite:
+        raise ValueError("必须指定output_dir或设置overwrite=True")
 
-    # 创建目标文件夹
-    train_dir = os.path.join(target_base_dir, "Train")
-    valid_dir = os.path.join(target_base_dir, "Valid")
-    test_dir = os.path.join(target_base_dir, "Test")
+    # 获取所有批次文件
+    batch_files = sorted(glob.glob(os.path.join(input_dir, file_pattern)))
+    if not batch_files:
+        raise ValueError(f"在 {input_dir} 中未找到符合 {file_pattern} 的文件")
 
-    os.makedirs(train_dir, exist_ok=True)
-    os.makedirs(valid_dir, exist_ok=True)
-    os.makedirs(test_dir, exist_ok=True)
+    total_files = len(batch_files)
+    logger.info(f"找到 {total_files} 个批次文件")
+    logger.info(f"开始将浮点变量转换为 {target_dtype}...")
 
-    # 获取源文件夹中的所有文件
-    all_files = []
-    for root, _, files in os.walk(source_dir):
-        for file in files:
-            all_files.append(os.path.join(root, file))
+    # 统计信息
+    converted_files = 0
+    converted_vars = 0
+    total_vars = 0
+    total_size_before = 0
+    total_size_after = 0
 
-    # 随机打乱文件顺序
-    random.shuffle(all_files)
+    # 遍历所有文件
+    for file_path in tqdm(batch_files, desc="处理文件"):
+        file_basename = os.path.basename(file_path)
+        output_path = os.path.join(output_dir, file_basename) if output_dir else file_path
 
-    # 计算每个集合应该包含的文件数量
-    total_files = len(all_files)
-    train_count = int(total_files * train_ratio)
-    valid_count = int(total_files * valid_ratio)
-
-    # 划分文件到三个集合
-    train_files = all_files[:train_count]
-    valid_files = all_files[train_count : train_count + valid_count]
-    test_files = all_files[train_count + valid_count :]
-
-    # 处理单个文件的函数
-    def process_file(file_data):
-        file_path, target_dir = file_data
-        # 保持源文件夹的相对目录结构
-        rel_path = os.path.relpath(file_path, source_dir)
-        target_path = os.path.join(target_dir, rel_path)
-
-        # 确保目标目录存在
-        os.makedirs(os.path.dirname(target_path), exist_ok=True)
-
-        # 复制或移动文件
         try:
-            if copy_files:
-                shutil.copy2(file_path, target_path)
-            else:
-                shutil.move(file_path, target_path)
-            return True
+            # 读取数据集
+            ds = xr.open_dataset(file_path)
+            file_size_before = os.path.getsize(file_path)
+            total_size_before += file_size_before
+
+            # 检查并转换变量
+            encoding = {}
+            has_conversion = False
+            file_vars = 0
+            file_converted = 0
+
+            for var_name, da in ds.data_vars.items():
+                total_vars += 1
+                file_vars += 1
+
+                # 检查是否为浮点类型且非目标类型
+                if np.issubdtype(da.dtype, np.floating) and da.dtype != np.dtype(target_dtype):
+                    logger.debug(f"转换变量 {var_name}: {da.dtype} -> {target_dtype}")
+                    ds[var_name] = da.astype(target_dtype)
+                    has_conversion = True
+                    converted_vars += 1
+                    file_converted += 1
+
+                # 设置压缩编码
+                encoding[var_name] = {
+                    "zlib": True,
+                    "complevel": 5,
+                    "_FillValue": None if np.issubdtype(da.dtype, np.floating) else getattr(da, "_FillValue", None),
+                }
+
+            # 如果有变量被转换或强制覆盖，则保存文件
+            if has_conversion or output_dir is not None:
+                # 如果需要备份原文件
+                if overwrite and output_dir is None and os.path.exists(file_path):
+                    temp_backup = file_path + ".backup"
+                    os.rename(file_path, temp_backup)
+
+                # 保存转换后的文件
+                ds.to_netcdf(output_path, encoding=encoding)
+                converted_files += 1
+
+                # 删除备份文件
+                if overwrite and output_dir is None and os.path.exists(temp_backup):
+                    os.remove(temp_backup)
+
+                # 计算文件大小差异
+                if os.path.exists(output_path):
+                    file_size_after = os.path.getsize(output_path)
+                    total_size_after += file_size_after
+                    size_change = (file_size_after - file_size_before) / file_size_before * 100
+                    logger.debug(
+                        f"文件 {file_basename}: {file_converted}/{file_vars} 个变量已转换, 大小变化: {size_change:.1f}%"
+                    )
+
+            # 关闭数据集
+            ds.close()
+
         except Exception as e:
-            print(f"处理文件 {file_path} 时出错: {e}")
-            return False
+            logger.error(f"处理文件 {file_path} 时出错: {e}")
 
-    # 并行复制或移动文件的函数
-    def transfer_files(file_list, target_dir):
-        # 创建任务列表
-        tasks = [(file_path, target_dir) for file_path in file_list]
-        successful = 0
+    # 计算空间节省
+    if total_size_before > 0:
+        space_saving = (total_size_before - total_size_after) / total_size_before * 100
+        space_saving_mb = (total_size_before - total_size_after) / (1024 * 1024)
+    else:
+        space_saving = 0
+        space_saving_mb = 0
 
-        # 使用线程池并行处理文件
-        with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
-            # 提交所有任务并显示进度条
-            results = list(
-                tqdm(
-                    executor.map(process_file, tasks),
-                    total=len(tasks),
-                    desc=f"处理 {os.path.basename(target_dir)} 数据集",
-                )
-            )
+    # 计算总耗时
+    total_duration = time.time() - start_time
 
-            # 计算成功处理的文件数
-            successful = sum(results)
+    logger.info("=" * 60)
+    logger.info(f"转换完成! 总耗时: {total_duration:.2f}秒")
+    logger.info(f"处理文件: {total_files} 个")
+    logger.info(f"转换文件: {converted_files} 个")
+    logger.info(f"转换变量: {converted_vars}/{total_vars} 个 ({converted_vars/total_vars*100:.1f}%)")
+    logger.info(f"空间节省: {space_saving:.1f}% ({space_saving_mb:.1f} MB)")
+    logger.info("=" * 60)
 
-        return successful
-
-    # 复制或移动文件到目标文件夹
-    print("开始处理数据...")
-    train_success = transfer_files(train_files, train_dir)
-    valid_success = transfer_files(valid_files, valid_dir)
-    test_success = transfer_files(test_files, test_dir)
-
-    # 打印统计信息
-    print(f"\n数据集划分完成:")
-    print(f"总文件数: {total_files}")
-    print(f"训练集: {train_success}/{len(train_files)} 文件成功处理 ({train_success/total_files:.2%})")
-    print(f"验证集: {valid_success}/{len(valid_files)} 文件成功处理 ({valid_success/total_files:.2%})")
-    print(f"测试集: {test_success}/{len(test_files)} 文件成功处理 ({test_success/total_files:.2%})")
+    return {
+        "total_files": total_files,
+        "converted_files": converted_files,
+        "total_vars": total_vars,
+        "converted_vars": converted_vars,
+        "space_saving_percent": space_saving,
+        "space_saving_mb": space_saving_mb,
+        "duration_seconds": total_duration,
+    }
 
 
 if __name__ == "__main__":
-    # 命令行参数解析
-    parser = argparse.ArgumentParser(description="将数据集分割为训练集、验证集和测试集")
-    parser.add_argument("--source", type=str, default="/mnt/h/DataSet/Merged_padded/", help="源数据文件夹路径")
-    parser.add_argument("--target", type=str, default="/mnt/h/Data/", help="目标基础路径")
-    parser.add_argument("--train", type=float, default=0.7, help="训练集比例 (默认: 0.7)")
-    parser.add_argument("--valid", type=float, default=0.15, help="验证集比例 (默认: 0.15)")
-    parser.add_argument("--test", type=float, default=0.15, help="测试集比例 (默认: 0.15)")
-    parser.add_argument("--move", action="store_true", help="移动文件而不是复制")
-    parser.add_argument("--seed", type=int, default=42, help="随机种子 (默认: 42)")
-    parser.add_argument("--workers", type=int, default=8, help="并行工作线程数 (默认: 8)")
+    # 批次文件目录
+    input_dir = "/mnt/h/Merge/temp"
 
-    args = parser.parse_args()
+    # 输出目录，设为None表示原地覆盖
+    output_dir = None  # 或者指定一个新目录如 "/mnt/h/Merge/temp_float32"
 
-    split_data(
-        source_dir=args.source,
-        target_base_dir=args.target,
-        train_ratio=args.train,
-        valid_ratio=args.valid,
-        test_ratio=args.test,
-        copy_files=not args.move,
-        seed=args.seed,
-        num_workers=args.workers,
+    # 转换批次文件精度
+    convert_batch_files_precision(
+        input_dir=input_dir,
+        output_dir=output_dir,
+        target_dtype="float32",  # 转换为float32
+        overwrite=True,  # 覆盖原文件
+        file_pattern="*.nc",  # 文件匹配模式
     )
