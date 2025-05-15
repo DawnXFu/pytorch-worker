@@ -34,23 +34,24 @@ def setup_logging(log_file="process.log"):
     return logger
 
 
-# 从文件名中获取时间戳和小时信息
+# 从文件名中获取时间戳和小时信息（更新后的函数）
 def parse_filename(filename):
     basename = os.path.basename(filename)
-    # 提取时间戳 (BABJ_20220402220521)
+    # 提取产品生成时间 (BABJ_20220402220521)
     timestamp_match = re.search(r"BABJ_(\d{14})_P", basename)
     timestamp = timestamp_match.group(1) if timestamp_match else None
 
-    # 提取小时信息 (2022040222)
+    # 提取资料时间 (2022040222)
     hour_match = re.search(r"HOR-[A-Z]+-(\d{10})\.GRB2", basename)
     hour_id = hour_match.group(1) if hour_match else None
-    hour = hour_id[-2:] if hour_id else None
+    hour = hour_id[-2:] if hour_id else None  # 提取小时部分
+    data_date = hour_id[:-2] if hour_id else None  # 提取日期部分 YYYYMMDD
 
     # 提取数据类型 (TAIR, UWIN, VWIN, PRE)
     data_type_match = re.search(r"HOR-([A-Z]+)-\d{10}\.GRB2", basename)
     data_type = data_type_match.group(1) if data_type_match else None
 
-    return timestamp, hour, data_type
+    return timestamp, hour, data_type, hour_id
 
 
 # 获取DEM的边界框
@@ -155,38 +156,36 @@ def crop_grb_data(grb_file, dem_bounds, logger):
         return None
 
 
-# 为每小时选择最接近整点的文件，对于PRE(降水)类型保留所有文件
+# 为每小时选择资料时间最新的文件，对所有类型都只选择一个文件
 def select_hourly_files(files_by_hour, data_type, logger):
     selected_files = {}
 
-    # 如果是降水数据(PRE)，保留该小时的所有文件
-    if data_type == "PRE":
-        return files_by_hour  # 直接返回所有PRE文件，按小时分组
-
-    # 对其他数据类型，仍然只选择最接近整点的文件
+    # 对所有数据类型，选择资料时间最新的文件
     for hour, files in files_by_hour.items():
         if len(files) == 1:
             selected_files[hour] = files[0]
             continue
 
-        # 计算每个文件的时间戳离整点的距离
-        best_file = None
-        min_diff = float("inf")
+        # 选择资料时间最新的文件
+        latest_file = None
+        latest_data_datetime = None
 
         for file in files:
-            timestamp, _, _ = parse_filename(file)
-            if timestamp:
-                minutes = int(timestamp[10:12])
-                seconds = int(timestamp[12:14])
-                time_diff = minutes * 60 + seconds
+            timestamp, _, _, hour_id = parse_filename(file)
+            if hour_id:
+                # 转换资料时间为datetime对象进行比较
+                try:
+                    data_datetime = datetime.strptime(hour_id, "%Y%m%d%H")
+                    if latest_data_datetime is None or data_datetime > latest_data_datetime:
+                        latest_data_datetime = data_datetime
+                        latest_file = file
+                except ValueError:
+                    logger.warning(f"无法解析资料时间: {hour_id}")
+                    continue
 
-                if time_diff < min_diff:
-                    min_diff = time_diff
-                    best_file = file
-
-        if best_file:
-            selected_files[hour] = best_file
-            logger.debug(f"已为{hour}时选择文件: {os.path.basename(best_file)}")
+        if latest_file:
+            selected_files[hour] = latest_file
+            logger.debug(f"已为{hour}时选择资料时间最新文件: {os.path.basename(latest_file)}")
         else:
             logger.warning(f"无法为{hour}时选择文件")
 
@@ -215,7 +214,8 @@ def process_single_date(date_dir, dem_bounds, output_dir, existing_nc_files, log
 
         hourly_files = {}
         for file in data_files:
-            _, hour, _ = parse_filename(file)
+            # 修改这里，匹配四个返回值
+            _, hour, _, _ = parse_filename(file)
             if hour:
                 if hour not in hourly_files:
                     hourly_files[hour] = []
@@ -223,61 +223,21 @@ def process_single_date(date_dir, dem_bounds, output_dir, existing_nc_files, log
 
         selected_files = select_hourly_files(hourly_files, data_type, logger)
 
-        # 处理非PRE类型数据（每小时一个文件）
-        if data_type != "PRE":
-            for hour, file in selected_files.items():
-                logger.info(f"    处理 {data_type} {hour} 时文件: {os.path.basename(file)}")
-                result = crop_grb_data(file, dem_bounds, logger)
-                if result and hour not in daily_data:
-                    daily_data[hour] = {}
-                if result:
-                    for var in result:
-                        daily_data[hour][data_type] = result[var]
-                        # 只在第一次裁剪时获取经纬度
-                        if unique_lats is None or unique_lons is None:
-                            unique_lats = np.unique(result[var][1])
-                            unique_lons = np.unique(result[var][2])
-                    all_hours.add(hour)
-        # 处理PRE类型数据（累加同一小时的所有文件）
-        else:
-            for hour, files in selected_files.items():
-                if hour not in daily_data:
-                    daily_data[hour] = {}
+        # 统一处理所有类型数据（每小时一个文件）
+        for hour, file in selected_files.items():
+            logger.info(f"    处理 {data_type} {hour} 时文件: {os.path.basename(file)}")
+            result = crop_grb_data(file, dem_bounds, logger)
+            if result and hour not in daily_data:
+                daily_data[hour] = {}
+            if result:
+                for var in result:
+                    daily_data[hour][data_type] = result[var]
+                    # 只在第一次裁剪时获取经纬度
+                    if unique_lats is None or unique_lons is None:
+                        unique_lats = np.unique(result[var][1])
+                        unique_lons = np.unique(result[var][2])
+                all_hours.add(hour)
 
-                # 初始化累加数组和计数
-                accumulated_data = None
-                precipitation_lats = None
-                precipitation_lons = None
-                file_count = 0  # 新增计数器
-
-                logger.info(f"    处理 PRE {hour} 时的 {len(files)} 个文件")
-                for file in files:
-                    logger.debug(f"      累加文件: {os.path.basename(file)}")
-                    result = crop_grb_data(file, dem_bounds, logger)
-                    if result:
-                        for var in result:
-                            data, lats, lons = result[var]
-
-                            # 如果是第一个文件，初始化累加变量
-                            if accumulated_data is None:
-                                accumulated_data = data.copy()
-                                precipitation_lats = lats.copy()
-                                precipitation_lons = lons.copy()
-
-                                # 只在第一次裁剪时获取经纬度（如果还未设置）
-                                if unique_lats is None or unique_lons is None:
-                                    unique_lats = np.unique(lats)
-                                    unique_lons = np.unique(lons)
-                            else:
-                                # 累加降水数据
-                                accumulated_data += data
-                            file_count += 1  # 每处理一个文件计数加一
-
-                # 保存平均后的降水数据
-                if accumulated_data is not None and file_count > 0:
-                    mean_data = accumulated_data / file_count  # 计算平均
-                    daily_data[hour]["PRE"] = (mean_data, precipitation_lats, precipitation_lons)
-                    all_hours.add(hour)
     if not daily_data:
         logger.warning(f"  [跳过] {date_name} 无有效数据。")
         return
@@ -325,8 +285,8 @@ def save_daily_to_netcdf(daily_data, hours, unique_lats, unique_lons, output_fil
             times = [pd.to_datetime(h, format="%H") for h in hours]
         ds = ds.assign_coords(
             time=("time", times),
-            lat=("lat", unique_lats),
-            lon=("lon", unique_lons),
+            lat=("lat", unique_lats.astype(np.float32)),
+            lon=("lon", unique_lons.astype(np.float32)),
         )
 
         # 优化：提前构建经纬度到索引的映射
@@ -334,10 +294,13 @@ def save_daily_to_netcdf(daily_data, hours, unique_lats, unique_lons, output_fil
         lon_to_idx = {v: i for i, v in enumerate(unique_lons)}
 
         for var_name in ["TAIR", "UWIN", "VWIN", "PRE"]:
-            data_arr = np.full((len(hours), len(unique_lats), len(unique_lons)), np.nan)
+            # 使用float32而不是默认的float64，减小文件大小
+            data_arr = np.full((len(hours), len(unique_lats), len(unique_lons)), np.nan, dtype=np.float32)
             for t_idx, hour in enumerate(hours):
                 if hour in daily_data and var_name in daily_data[hour]:
                     data, lats, lons = daily_data[hour][var_name]
+                    # 确保数据是float32类型
+                    data = data.astype(np.float32)
                     # 向量化索引查找，减少循环
                     lat_indices = np.array([lat_to_idx.get(lat, -1) for lat in lats])
                     lon_indices = np.array([lon_to_idx.get(lon, -1) for lon in lons])
@@ -346,15 +309,27 @@ def save_daily_to_netcdf(daily_data, hours, unique_lats, unique_lons, output_fil
             ds[var_name] = xr.DataArray(
                 data_arr,
                 dims=["time", "lat", "lon"],
-                coords={"time": times, "lat": unique_lats, "lon": unique_lons},
+                coords={"time": times, "lat": unique_lats.astype(np.float32), "lon": unique_lons.astype(np.float32)},
                 attrs={"units": "mm", "long_name": var_name},
             )
 
         ds.attrs["title"] = "每日合并气象数据"
         ds.attrs["created"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         ds.attrs["description"] = "每日TAIR、UWIN、VWIN、PRE合并，按time/lat/lon组织"
-        ds.to_netcdf(output_file)
-        logger.info(f"成功保存数据至 {output_file}")
+
+        # 添加压缩选项，减小文件大小
+        encoding = {}
+        for var_name in ds.data_vars:
+            encoding[var_name] = {
+                "zlib": True,  # 启用压缩
+                "complevel": 5,  # 压缩级别（1-9），平衡压缩率和速度
+                "dtype": "float32",  # 确保为float32类型
+                "_FillValue": np.nan,  # 使用标准填充值
+            }
+
+        # 使用压缩设置保存文件
+        ds.to_netcdf(output_file, encoding=encoding)
+        logger.info(f"成功保存压缩数据至 {output_file}")
         return True
     except Exception as e:
         logger.error(f"保存NC文件出错 {output_file}: {e}")

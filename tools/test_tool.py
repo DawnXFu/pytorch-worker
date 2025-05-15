@@ -3,8 +3,9 @@ import os
 from timeit import default_timer as timer
 
 import torch
-from tools.eval_tool import gen_time_str, output_value
 from torch.autograd import Variable
+
+from tools.eval_tool import gen_time_str, output_value
 
 logger = logging.getLogger(__name__)
 
@@ -25,13 +26,12 @@ def test(parameters, config, gpu_list):
     step = -1
     result = []
 
-    for step, data in enumerate(dataset):
-        for key in data.keys():
-            if isinstance(data[key], torch.Tensor):
-                if len(gpu_list) > 0:
-                    data[key] = Variable(data[key].cuda())
-                else:
-                    data[key] = Variable(data[key])
+    for step, batch in enumerate(dataset):
+        # 准备数据
+        if gpu_list:
+            data = {k: v.cuda(non_blocking=True) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
+        else:
+            data = {k: Variable(v) if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
 
         results = model(data, config, gpu_list, acc_result, "test")
         result = result + results["output"]

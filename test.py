@@ -1,25 +1,25 @@
 import argparse
-import os
-import torch
-import logging
 import json
+import logging
+import os
 
-from tools.init_tool import init_all
+import torch
+
 from config_parser import create_config
+from tools.init_tool import init_all
 from tools.test_tool import test
 
-logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
-                    datefmt='%m/%d/%Y %H:%M:%S',
-                    level=logging.INFO)
+logging.basicConfig(
+    format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s", datefmt="%m/%d/%Y %H:%M:%S", level=logging.INFO
+)
 
 logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', '-c', help="specific config file", required=True)
-    parser.add_argument('--gpu', '-g', help="gpu id list")
-    parser.add_argument('--checkpoint', help="checkpoint file path", required=True)
-    parser.add_argument('--result', help="result file path", required=True)
+    parser.add_argument("--config", "-c", default="config/UASMLSTM/UASMLSTM.config", help="specific config file")
+    parser.add_argument("--gpu", "-g", help="gpu id list")
+    parser.add_argument("--result", help="result file path", default="result.json")
     args = parser.parse_args()
 
     configFilePath = args.config
@@ -46,7 +46,12 @@ if __name__ == "__main__":
         logger.error("CUDA is not available but specific gpu id")
         raise NotImplementedError
 
-    parameters = init_all(config, gpu_list, args.checkpoint, "test")
+    parameters = init_all(config, gpu_list, "test")
 
-    json.dump(test(parameters, config, gpu_list), open(args.result, "w", encoding="utf8"), ensure_ascii=False,
-              sort_keys=True, indent=2)
+    json.dump(
+        test(parameters, config, gpu_list),
+        open(args.result, "w", encoding="utf8"),
+        ensure_ascii=False,
+        sort_keys=True,
+        indent=2,
+    )

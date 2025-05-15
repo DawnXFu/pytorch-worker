@@ -13,14 +13,14 @@ class PreCorrectFormatter:
 
         for temp in data:
             input_data.append(temp["data"])
-            if mode != "test":
+            if mode != "infer":
                 label_data.append(temp["label"])
 
         input_data = torch.from_numpy(np.array(input_data)).float()
         # 将input_data中的nan值替换为0
         input_data = torch.nan_to_num(input_data, nan=0.0)
 
-        if mode != "test":
+        if mode != "infer":
             label_data = torch.from_numpy(np.array(label_data)).float()
             # 将label_data中的nan值替换为0
             label_data = torch.nan_to_num(label_data, nan=0.0)

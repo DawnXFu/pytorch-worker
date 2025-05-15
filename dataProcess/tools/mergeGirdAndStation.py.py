@@ -201,9 +201,6 @@ def merge_precip_and_meteo_nc(
             gc.collect()
 
             logger.info("4. 合并当前批次数据集...")
-            # 从气象数据中去掉PRE变量（如果存在）
-            if "PRE" in meteo_ds_interp:
-                meteo_ds_interp = meteo_ds_interp.drop_vars("PRE")
 
             # 合并数据集
             merged_ds = xr.merge([curr_precip_ds, meteo_ds_interp])
@@ -363,8 +360,8 @@ if __name__ == "__main__":
     # 请替换为实际路径
     precip_zarr_path = "/mnt/h/DataSet/PreGrids_IDW/temp_output.zarr"
     meteo_folder_path = "/mnt/h/DataSet/Grids/"
-    output_nc_path = "/mnt/h/Merge/merged_data.nc"
-    temp_dir = "/mnt/h/Merge/temp"
+    output_nc_path = "/mnt/h/DataSet/Merge/merged_data.nc"
+    temp_dir = "/mnt/h/DataSet/Merge/temp"
 
     # 运行合并函数，使用更大的批次大小以减少写入次数
     merge_precip_and_meteo_nc(
@@ -372,7 +369,7 @@ if __name__ == "__main__":
         meteo_folder_path=meteo_folder_path,
         output_nc_path=output_nc_path,
         time_chunk_size=24,  # 一天的数据量
-        batch_size=168,  # 每批处理7天的数据，大幅减少写入次数
+        batch_size=24,  # 每批处理7天的数据，大幅减少写入次数
         resume=True,  # 启用断点续传功能
         temp_dir=temp_dir,  # 临时文件存储目录
     )

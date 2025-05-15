@@ -620,7 +620,7 @@ class PrecipitationInterpolation:
         station_precip = self.station_ds["rain1h_qc"].sel(time=current_time).values
 
         # 筛选降水值大于0的站点
-        rain_mask = station_precip > 0.1
+        rain_mask = station_precip > -0.1
 
         # 检查是否有足够多的降水站点
         if np.sum(rain_mask) < idw_params["min_points"]:

@@ -3,6 +3,7 @@ import logging
 import os
 
 import torch
+
 from config_parser import create_config
 from tools.init_tool import init_all
 from tools.train_tool import train
@@ -15,15 +16,8 @@ logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    # parser.add_argument('--config', '-c', help="specific config file", required=True)
-    # parser.add_argument('--gpu', '-g', help="gpu id list")
-    # parser.add_argument('--checkpoint', help="checkpoint file path")
-    # parser.add_argument('--do_test', help="do test while training or not", action="store_true")
-    # parser.add_argument('--local_rank', help='local rank', default=0)
-
     parser.add_argument("--config", "-c", help="specific config file", default="config/UASMLSTM/UASMLSTM.config")
     parser.add_argument("--gpu", "-g", help="gpu id list", default="0")
-    parser.add_argument("--checkpoint", help="checkpoint file path", default="mnt/h/DataSet/checkpoint/")
     parser.add_argument("--do_test", help="do test while training or not", action="store_true")
     parser.add_argument("--local_rank", help="local rank", default=0)
     args = parser.parse_args()
@@ -31,8 +25,8 @@ if __name__ == "__main__":
     configFilePath = args.config
 
     config = create_config(configFilePath)
-    if config.getboolean("distributed", "use"):
-        torch.distributed.init_process_group(backend=config.get("distributed", "backend"))
+    # if config.getboolean("distributed", "use"):
+    #     torch.distributed.init_process_group(backend=config.get("distributed", "backend"))
 
     use_gpu = True
     gpu_list = []
@@ -54,7 +48,7 @@ if __name__ == "__main__":
         logger.error("CUDA is not available but specific gpu id")
         raise NotImplementedError
 
-    parameters = init_all(config, gpu_list, args.checkpoint, "train")
+    parameters = init_all(config, gpu_list, "train")
     do_test = False
     if args.do_test:
         do_test = True
