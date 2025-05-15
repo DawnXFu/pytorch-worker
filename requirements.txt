@@ -1,7 +1,9 @@
-torchvision==0.2.1
-opencv_python==4.1.0.25
-torch==1.0.0
-tqdm==4.31.1
-pytorch_pretrained_bert==0.6.2
-numpy==1.16.2
-tensorboardX==1.8
+einops==0.8.1
+numpy==2.2.5
+opencv_python==4.10.0.84
+opencv_python_headless==4.10.0.84
+pytorch_transformers==1.2.0
+sympy==1.13.3
+torch==2.5.1
+torchvision==0.20.1
+xarray==2024.7.0
