@@ -1,9 +1,8 @@
 import logging
 
-from torch.utils.data import DataLoader
-
 import data_formatter as form
 from dataset import dataset_list
+from torch.utils.data import DataLoader
 
 logger = logging.getLogger(__name__)
 

@@ -1,11 +1,13 @@
 import logging
 
 from .UASMLSTM.PreCorrectFormaater import PreCorrectFormatter
+from .UNET.UNETFormatter import UNETFormatter
 
 logger = logging.getLogger(__name__)
 
 formatter_list = {
     "PreCorrect_UASMLSTM": PreCorrectFormatter,
+    "UNET": UNETFormatter,
 }
 
 

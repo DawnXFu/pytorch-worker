@@ -1,5 +1,5 @@
 import logging
-import re
+import os
 
 import numpy as np
 import torch
@@ -150,23 +150,90 @@ def MAE_score(pred_x, y_label):
 
 
 def Correlation_score(pred_x, y_label):
-    """计算相关系数，处理边缘情况以避免NaN"""
+    """计算相关系数，处理边缘情况以避免NaN，并记录异常情况"""
     pred_x = pred_x.reshape(-1)
     y_label = y_label.reshape(-1)
 
+    # 检查输入张量是否包含NaN或Inf值
+    if torch.isnan(pred_x).any() or torch.isinf(pred_x).any():
+        nan_count = torch.isnan(pred_x).sum().item()
+        inf_count = torch.isinf(pred_x).sum().item()
+        logger.error(f"预测值包含异常值: NaN={nan_count}, Inf={inf_count}, 总数={pred_x.numel()}")
+
+        # 保存错误样本用于分析
+        save_error_sample(pred_x, y_label, "nan_inf_values")
+
+        # 替换NaN和Inf为0以允许计算继续
+        pred_x = torch.nan_to_num(pred_x, nan=0.0, posinf=0.0, neginf=0.0)
+
     pred_mean = pred_x.mean().item()
     label_mean = y_label.mean().item()
-    pred_std = pred_x.std().item()
-    label_std = y_label.std().item()
+
+    try:
+        pred_std = pred_x.std().item()
+        label_std = y_label.std().item()
+
+        # 检查计算结果是否为NaN
+        if np.isnan(pred_std) or np.isnan(label_std):
+            logger.error(f"标准差计算结果为NaN: pred_values={pred_x[:5].tolist()}, pred_mean={pred_mean}")
+            save_error_sample(pred_x, y_label, "nan_std")
+            pred_std = 0.0 if np.isnan(pred_std) else pred_std
+            label_std = 0.0 if np.isnan(label_std) else label_std
+    except Exception as e:
+        logger.error(f"计算标准差时发生错误: {str(e)}")
+        pred_std = 0.0
+        label_std = 0.0
+        save_error_sample(pred_x, y_label, "std_error")
+
     covariance = ((pred_x - pred_mean) * (y_label - label_mean)).mean().item()
+
     # 计算相关系数
     if pred_std > 0 and label_std > 0:
         correlation = covariance / (pred_std * label_std)
         return max(-1.0, min(1.0, correlation))
     else:
-        # 如果标准差为0，返回0.0
-        logger.warning("Standard deviation is zero, returning 0.0 for correlation.")
+        # 如果标准差为0或NaN，返回0.0
+        logger.warning(f"标准差为零或NaN: pred_std={pred_std}, target_std={label_std}，返回相关系数0.0")
         return 0.0
+
+
+def save_error_sample(pred_x, y_label, error_type):
+    """保存错误样本到文件，用于离线分析"""
+    try:
+        # 创建调试目录
+        debug_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "debug_data")
+        os.makedirs(debug_dir, exist_ok=True)
+
+        # 生成唯一文件名
+        import time
+        import uuid
+
+        timestamp = int(time.time())
+        unique_id = str(uuid.uuid4())[:8]
+        debug_file = os.path.join(debug_dir, f"{error_type}_{timestamp}_{unique_id}.npz")
+
+        # 转换为numpy并保存
+        pred_np = pred_x.detach().cpu().numpy() if isinstance(pred_x, torch.Tensor) else pred_x
+        label_np = y_label.detach().cpu().numpy() if isinstance(y_label, torch.Tensor) else y_label
+
+        # 保存数据和一些统计信息
+        np.savez(
+            debug_file,
+            pred_values=pred_np,
+            label_values=label_np,
+            pred_contains_nan=np.isnan(pred_np).any(),
+            label_contains_nan=np.isnan(label_np).any(),
+            pred_contains_inf=np.isinf(pred_np).any(),
+            label_contains_inf=np.isinf(label_np).any(),
+            pred_min=float(np.nanmin(pred_np)) if not np.all(np.isnan(pred_np)) else "all_nan",
+            pred_max=float(np.nanmax(pred_np)) if not np.all(np.isnan(pred_np)) else "all_nan",
+            label_min=float(np.nanmin(label_np)) if not np.all(np.isnan(label_np)) else "all_nan",
+            label_max=float(np.nanmax(label_np)) if not np.all(np.isnan(label_np)) else "all_nan",
+        )
+
+        logger.info(f"已保存错误样本到 {debug_file}")
+    except Exception as e:
+        logger.error(f"保存错误样本时发生错误: {str(e)}")
 
 
 def KGE_score(pred_x, y_label):
