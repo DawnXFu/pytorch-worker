@@ -7,7 +7,7 @@ from tools.accuracy_init import init_accuracy_function
 from .DSW import DepthwiseSeparableConv
 
 
-class UNetModel(nn.Module):
+class UNET(nn.Module):
     def __init__(self, config, gpu_list, *args, **kwargs):
         super().__init__()
         # 读取配置

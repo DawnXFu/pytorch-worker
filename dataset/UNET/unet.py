@@ -83,7 +83,7 @@ class UNetDataset(Dataset):
         features = torch.from_numpy(features).float()
         label = torch.from_numpy(label).float()
 
-        return {"input": features, "label": label}
+        return {"data": features, "label": label}
 
     def __len__(self):
         return len(self.sample_map)

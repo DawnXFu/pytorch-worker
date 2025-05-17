@@ -1,6 +1,7 @@
 from .UASMLSTM.model import UASMLSTM
+from .UNET.model import UNET
 
-model_list = {"UASMLSTM": UASMLSTM}
+model_list = {"UASMLSTM": UASMLSTM, "UNET": UNET}
 
 
 def get_model(model_name):
