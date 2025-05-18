@@ -8,6 +8,12 @@ from config_parser import create_config
 from tools.init_tool import init_all
 from tools.train_tool import train
 
+# 设置 CUDA 优化选项
+torch.backends.cudnn.benchmark = True  # 启用 cuDNN 基准测试，加速卷积操作
+torch.backends.cuda.matmul.allow_tf32 = True  # 允许 TF32 精度 (仅限 Ampere 及以上架构)
+torch.backends.cudnn.allow_tf32 = True  # 允许 TF32 精度用于卷积
+
+
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s", datefmt="%m/%d/%Y %H:%M:%S", level=logging.INFO
 )
@@ -16,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", "-c", help="specific config file", default="config/UNET/UNET.config")
+    parser.add_argument("--config", "-c", help="specific config file", default="config/UASMLSTM/UASMLSTM.config")
     parser.add_argument("--gpu", "-g", help="gpu id list", default="0")
     parser.add_argument("--do_test", help="do test while training or not", action="store_true")
     parser.add_argument("--local_rank", help="local rank", default=0)

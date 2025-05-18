@@ -30,7 +30,7 @@ class PreCorrectDataset(Dataset):
         self.cache_data = params.get("cache_data", False)
 
         # 滑动窗口参数
-        self.stride = params.get("stride", 3)  # 如果配置中没有，使用默认值1
+        self.stride = params.get("stride", 1)  # 如果配置中没有，使用默认值1
         if hasattr(config, "getint") and config.has_option("model", "stride"):
             self.stride = config.getint("model", "stride")
 
