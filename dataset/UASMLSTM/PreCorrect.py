@@ -1,6 +1,8 @@
 import os
+from collections import OrderedDict
 
 import numpy as np
+import pandas as pd
 import torch
 import xarray as xr
 from torch.utils.data import Dataset
@@ -8,105 +10,93 @@ from torch.utils.data import Dataset
 
 class PreCorrectDataset(Dataset):
     def __init__(self, config, mode, *args, **params):
-        """
-        初始化数据集
-
-        参数:
-        config: 配置对象，包含数据路径和模型参数
-        mode: 数据集模式，如'train', 'valid', 'test'
-        """
         self.config = config
         self.mode = mode
-
-        # 从配置中读取参数
         self.data_path = config.get("data", f"{mode}_data_path")
         self.seq_len = config.getint("model", "seq_length")
-
-        # 特征变量和目标变量
         self.feature_vars = params.get("feature_vars", ["TAIR", "UWIN", "VWIN", "PRE"])
         self.target_var = params.get("target_var", "corrected_precip")
-
-        # 是否缓存数据以加速训练
-        self.cache_data = params.get("cache_data", False)
-
-        # 滑动窗口参数
-        self.stride = params.get("stride", 1)  # 如果配置中没有，使用默认值1
+        self.stride = params.get("stride", 3)
         if hasattr(config, "getint") and config.has_option("model", "stride"):
             self.stride = config.getint("model", "stride")
+        self.max_open_files = params.get("max_open_files", 5)
+        self.file_handles = OrderedDict()
 
-        # 获取目录中所有NC文件
+        # 获取所有文件
         self.data_list = sorted([f for f in os.listdir(self.data_path) if f.endswith(".nc")])
-
-        if len(self.data_list) == 0:
+        if not self.data_list:
             raise ValueError(f"在 {self.data_path} 目录下未找到NC文件")
 
-        # 计算每个文件中有多少个有效样本
-        self.samples_per_file = []
-        self.sample_map = []  # 索引到(文件索引,文件内起始位置)的映射
-
-        for file_idx, filename in enumerate(self.data_list):
-            # 获取文件中的时间点数
-            file_path = os.path.join(self.data_path, filename)
-            try:
-                with xr.open_dataset(file_path) as ds:
-                    time_points = len(ds.time)
-
-                    # 计算可能的样本数: (总时间点 - 序列长度) / 步长
-                    # 这里假设我们预测的是序列末尾的下一个时间点
-                    valid_samples = max(0, (time_points - self.seq_len) // self.stride)
-                    self.samples_per_file.append(valid_samples)
-
-                    # 创建索引映射
-                    for i in range(valid_samples):
-                        self.sample_map.append((file_idx, i * self.stride))
-            except Exception as e:
-                print(f"警告: 无法读取文件 {file_path}: {e}")
-
-        # 数据缓存
-        self.data_cache = {} if self.cache_data else None
+        # 构建时间索引
+        self._build_global_time_index()
 
         print(f"{mode}数据集: 共加载了 {len(self.data_list)} 个文件, 总样本数: {len(self.sample_map)}")
 
+    def _build_global_time_index(self):
+        """构建全局时间索引"""
+        self.file_time_map = []
+        all_times = []
+        for file_idx, filename in enumerate(self.data_list):
+            file_path = os.path.join(self.data_path, filename)
+            with xr.open_dataset(file_path, engine="netcdf4", chunks={}, decode_times=True) as ds:
+                times = pd.to_datetime(ds.time.values)
+                for time_idx, timestamp in enumerate(times):
+                    self.file_time_map.append((file_idx, time_idx, timestamp))
+                    all_times.append(timestamp)
+        self.file_time_map.sort(key=lambda x: x[2])
+        all_times.sort()
+        self.sample_map = [i for i in range(0, len(all_times) - self.seq_len + 1, self.stride)]
+        self.global_time_to_file = {
+            i: (file_idx, time_idx) for i, (file_idx, time_idx, _) in enumerate(self.file_time_map)
+        }
+
+    def _get_file_handle(self, file_idx):
+        """懒加载文件句柄"""
+        if file_idx in self.file_handles:
+            self.file_handles.move_to_end(file_idx)
+            return self.file_handles[file_idx]
+        if len(self.file_handles) >= self.max_open_files:
+            _, oldest_handle = self.file_handles.popitem(last=False)
+            oldest_handle.close()
+        file_path = os.path.join(self.data_path, self.data_list[file_idx])
+        ds = xr.open_dataset(file_path, engine="netcdf4", chunks="auto")
+        self.file_handles[file_idx] = ds
+        return ds
+
     def __getitem__(self, index):
-        """获取指定索引的样本"""
-        file_idx, start_idx = self.sample_map[index]
-        filename = self.data_list[file_idx]
-        file_path = os.path.join(self.data_path, filename)
-
-        # 用 with 语句打开并自动关闭
-        if not (self.cache_data and file_path in self.data_cache):
-            with xr.open_dataset(file_path) as ds:
-                ds_data = {}
-                for var in self.feature_vars + [self.target_var]:
-                    ds_data[var] = ds[var].values if var in ds else np.zeros_like(ds[self.feature_vars[0]].values)
-            if self.cache_data:
-                self.data_cache[file_path] = ds_data
-        else:
-            ds_data = self.data_cache[file_path]
-
-        # 提取输入序列
-        end_idx = start_idx + self.seq_len
+        """获取样本"""
+        start_global_idx = self.sample_map[index]
         features = []
-
+        read_plan = [(t, *self.global_time_to_file[start_global_idx + t]) for t in range(self.seq_len)]
+        read_plan.sort(key=lambda x: x[1])
         for var in self.feature_vars:
-            # 选择时间窗口对应的数据
-            feature = ds_data[var][start_idx:end_idx]
-            features.append(feature)
-
-        # 堆叠特征形成输入张量 (feature_count, seq_len, lat, lon)
-        features = np.stack(features, axis=0)
-
-        # 获取标签 - 使用序列末尾之后的时间点
-        label = ds_data[self.target_var][end_idx]  # (lat, lon)
-
-        # 交换维度顺序，结果形状为(seq_len, feature_count, lat, lon)
-        features = np.transpose(features, (1, 0, 2, 3))
-
-        features = torch.from_numpy(features).float()
-        label = torch.from_numpy(label).float()
-        # 返回符合原有格式的字典
-        return {"data": features, "label": label}
+            var_seq = [None] * self.seq_len
+            current_file_idx = None
+            current_ds = None
+            for t, file_idx, time_idx in read_plan:
+                if current_file_idx != file_idx:
+                    current_file_idx = file_idx
+                    current_ds = self._get_file_handle(file_idx)
+                var_seq[t] = (
+                    current_ds[var].isel(time=time_idx).load().values
+                    if var in current_ds
+                    else np.zeros(self.grid_shape, dtype=np.float32)
+                )
+            features.append(np.stack(var_seq, axis=0))
+        features = np.transpose(np.stack(features, axis=0), (1, 0, 2, 3))
+        label_global_idx = start_global_idx + self.seq_len - 1
+        file_idx, time_idx = self.global_time_to_file[label_global_idx]
+        ds = self._get_file_handle(file_idx)
+        label = (
+            ds[self.target_var].isel(time=time_idx).load().values
+            if self.target_var in ds
+            else np.zeros(self.grid_shape, dtype=np.float32)
+        )
+        return {"data": torch.from_numpy(features).float(), "label": torch.from_numpy(label).float()}
 
     def __len__(self):
-        """返回数据集中的样本总数"""
         return len(self.sample_map)
+
+    def __del__(self):
+        for handle in self.file_handles.values():
+            handle.close()

@@ -144,6 +144,7 @@ def train(parameters, config, gpu_list, do_test=False):
     total_train_time = timer() - train_start_time
     logger.info(f"训练完成! 总耗时: {gen_time_str(total_train_time)}")
     writer.close()
+    torch.cuda.empty_cache()  # 清空 CUDA 缓存
     return model, optimizer, global_step
 
 

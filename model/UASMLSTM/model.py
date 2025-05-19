@@ -222,12 +222,12 @@ class UASMLSTM(nn.Module):
             label = data["label"]
             loss = self.criterion(x, label)
             acc_result = self.accuracy_function(x, label, config, acc_result)
-            if mode == "test":
-                return {"output": acc_result}
-            else:
+            if mode == "train":
                 return {"loss": loss, "acc_result": acc_result}
+            else:
+                return {"loss": loss, "acc_result": acc_result, "output": x, "label": label}
         else:
-            return {"output": x}
+            return {"loss": loss, "acc_result": acc_result, "output": x}
 
     def criterion(self, x, label):
         # 修改损失函数

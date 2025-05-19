@@ -1,8 +1,10 @@
 import logging
 import os
+import random
 from collections import defaultdict
 from timeit import default_timer as timer
 
+import matplotlib.pyplot as plt
 import torch
 from cv2 import log
 from torch.autograd import Variable
@@ -54,22 +56,21 @@ def valid(model, dataset, epoch, writer, config, gpu_list, output_function, metr
     """
     model.eval()
 
-    # 使用较小批次并手动管理缓存
     total_loss = 0
     acc_result = None
     total_samples = 0
+    total_outputs = []
+    total_labels = []
 
-    # 添加进度日志
     total_batches = len(dataset)
-    log_interval = max(1, total_batches // 10)  # 每10%报告一次
+    log_interval = max(1, total_batches // 10)
 
     logger.info(f"开始验证: 共{total_batches}批次，每批{dataset.batch_size}样本")
 
-    tb_cache = defaultdict(list)  # 用于存储 TensorBoard 缓存
+    tb_cache = defaultdict(list)
 
-    with torch.no_grad():  # 确保不储存梯度
+    with torch.no_grad():
         for step, batch in enumerate(dataset):
-            # 主动管理内存
             torch.cuda.empty_cache()
 
             if gpu_list:
@@ -77,23 +78,22 @@ def valid(model, dataset, epoch, writer, config, gpu_list, output_function, metr
             else:
                 data = batch
 
-            # 使用混合精度加速验证且节省内存
             if config.getboolean("train", "use_amp", fallback=True) and gpu_list:
                 with torch.amp.autocast("cuda"):
                     results = model(data, config, gpu_list, acc_result, "valid")
             else:
                 results = model(data, config, gpu_list, acc_result, "valid")
 
-            # 获取批次大小
             batch_size = len(data.get("label", next(iter(data.values()))))
-
-            # 累加损失
             loss_val = results["loss"].item() if isinstance(results["loss"], torch.Tensor) else results["loss"]
             total_loss += loss_val * batch_size
             total_samples += batch_size
 
-            # 保存评估指标
             acc_result = results["acc_result"]
+
+            # 保存 output 和 label
+            total_outputs.append(results["output"].cpu())
+            total_labels.append(results["label"].cpu())
 
             tb_cache["valid_loss"].append((step, loss_val))
 
@@ -105,12 +105,10 @@ def valid(model, dataset, epoch, writer, config, gpu_list, output_function, metr
                 step_index=step,
             )
 
-            # 主动释放内存
             del results
             del data
-            torch.cuda.empty_cache()  # 每批次后清理缓存
+            torch.cuda.empty_cache()
 
-            # 定期打印进度
             if (step + 1) % log_interval == 0 or step == total_batches - 1:
                 progress = (step + 1) / total_batches * 100
                 logger.info(f"验证进度: {step+1}/{total_batches} 批次 ({progress:.1f}%)")
@@ -126,7 +124,6 @@ def valid(model, dataset, epoch, writer, config, gpu_list, output_function, metr
         metrics,
     )
 
-    # 打印验证结果
     output_value(
         epoch,
         "valid",
