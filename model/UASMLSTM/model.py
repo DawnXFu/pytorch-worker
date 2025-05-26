@@ -1,8 +1,8 @@
 import torch
 from einops import rearrange
-from torch import nn
-
 from tools.accuracy_init import init_accuracy_function
+from torch import nn
+from torch.nn import functional as F
 
 from .CBAM import CBAMBlock
 from .DSW import DepthwiseSeparableConv
@@ -230,20 +230,18 @@ class UASMLSTM(nn.Module):
             return {"loss": loss, "acc_result": acc_result, "output": x}
 
     def criterion(self, x, label):
-        # 修改损失函数
         # 引入权重调整不同降水等级的损失贡献
         mask_light = (label > 0.1) & (label <= 5.0)
         mask_moderate = (label > 5.0) & (label <= 15.0)
         mask_heavy = label > 15.0
 
         # 基础损失计算
-        loss_L1 = nn.L1Loss(reduction="none")(x, label)
-        loss_MSE = nn.MSELoss(reduction="none")(x, label)
+        loss_L1 = F.l1_loss(x, label, reduction="none")
+        loss_MSE = F.mse_loss(x, label, reduction="none")
 
         # 对不同降水等级使用不同权重
         weighted_loss = loss_L1 * (1.0 + 5.0 * mask_light + 3.0 * mask_moderate + 2.0 * mask_heavy) + loss_MSE * (
             1.0 + 3.0 * mask_light + 2.0 * mask_moderate + 1.0 * mask_heavy
         )
 
-        # 可以考虑移除BCE损失，因为降水是连续值
         return weighted_loss.mean()

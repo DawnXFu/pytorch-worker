@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", "-c", help="specific config file", default="config/UNET/UNET.config")
+    parser.add_argument("--config", "-c", help="specific config file", default="config/ConvLSTM/ConvLSTM.config")
     parser.add_argument("--gpu", "-g", help="gpu id list", default="0")
     parser.add_argument("--do_test", help="do test while training or not", action="store_true")
     parser.add_argument("--local_rank", help="local rank", default=0)
@@ -52,7 +52,7 @@ if __name__ == "__main__":
     logger.info("CUDA available: %s" % str(cuda))
     if not cuda and len(gpu_list) > 0:
         logger.error("CUDA is not available but specific gpu id")
-        raise NotImplementedError
+        gpu_list = False
 
     parameters = init_all(config, gpu_list, "train")
     do_test = False

@@ -1,7 +1,8 @@
+from .ConvLSTM.model import ConvLSTMModel
 from .UASMLSTM.model import UASMLSTM
 from .UNET.model import UNET
 
-model_list = {"UASMLSTM": UASMLSTM, "UNET": UNET}
+model_list = {"UASMLSTM": UASMLSTM, "UNET": UNET, "ConvLSTM": ConvLSTMModel}
 
 
 def get_model(model_name):

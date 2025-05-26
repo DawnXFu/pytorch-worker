@@ -4,7 +4,6 @@ import logging
 import os
 
 import torch
-
 from config_parser import create_config
 from tools.init_tool import init_all
 from tools.test_tool import test
@@ -48,10 +47,4 @@ if __name__ == "__main__":
 
     parameters = init_all(config, gpu_list, "test")
 
-    json.dump(
-        test(parameters, config, gpu_list),
-        open(args.result, "w", encoding="utf8"),
-        ensure_ascii=False,
-        sort_keys=True,
-        indent=2,
-    )
+    results = test(parameters, config, gpu_list)

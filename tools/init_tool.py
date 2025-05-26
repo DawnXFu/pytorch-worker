@@ -4,13 +4,12 @@ import shutil
 from timeit import default_timer as timer
 
 import torch
-from torch.amp import GradScaler
-from torch.optim import lr_scheduler
-from torch.utils.tensorboard import SummaryWriter
-
 from model import get_model
 from model.optimizer import init_optimizer
 from reader.reader import init_dataset, init_test_dataset
+from torch.amp import GradScaler
+from torch.optim import lr_scheduler
+from torch.utils.tensorboard import SummaryWriter
 
 from .output_init import init_output_function
 
@@ -54,9 +53,11 @@ def init_all(config, gpu_list, mode, *args, **params):
     }
 
     if mode == "test":
+        # 初始化 ckpt_path 为 None
+        ckpt_path = None
         # 使用checkpoint参数或检查配置文件
-        if config.has_option("test", "resume_checkpoint"):
-            ckpt_path = config.get("test", "resume_checkpoint")
+        if config.has_option("eval", "resume_checkpoint"):
+            ckpt_path = config.get("eval", "resume_checkpoint")
 
         if ckpt_path:
             if not os.path.isabs(ckpt_path):
@@ -71,7 +72,6 @@ def init_all(config, gpu_list, mode, *args, **params):
                 )
             else:
                 logger.warning(f"Test checkpoint not found: {ckpt_path}")
-        return result
     # —— 3. 训练模式下的额外初始化 ——
     elif mode == "train":
         # optimizer
@@ -124,9 +124,10 @@ def init_all(config, gpu_list, mode, *args, **params):
         if result["start_epoch"] == 0 and os.path.isdir(tb_path):
             shutil.rmtree(tb_path)
         os.makedirs(tb_path, exist_ok=True)
-        writer = SummaryWriter(tb_path, config.get("output", "model_name"))
-        logger.info(f"TensorBoard logs → {tb_path}")
-        result["writer"] = writer
+
+    writer = SummaryWriter(tb_path, config.get("output", "model_name"))
+    logger.info(f"TensorBoard logs → {tb_path}")
+    result["writer"] = writer
 
     return result
 

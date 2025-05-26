@@ -38,7 +38,7 @@ class PreCorrectDataset(Dataset):
         all_times = []
         for file_idx, filename in enumerate(self.data_list):
             file_path = os.path.join(self.data_path, filename)
-            with xr.open_dataset(file_path, engine="netcdf4", chunks={}, decode_times=True) as ds:
+            with xr.open_dataset(file_path, engine="netcdf4", chunks="auto", decode_times=True) as ds:
                 times = pd.to_datetime(ds.time.values)
                 for time_idx, timestamp in enumerate(times):
                     self.file_time_map.append((file_idx, time_idx, timestamp))

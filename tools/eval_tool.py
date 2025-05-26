@@ -6,7 +6,6 @@ from timeit import default_timer as timer
 
 import matplotlib.pyplot as plt
 import torch
-from cv2 import log
 from torch.autograd import Variable
 from torch.optim import lr_scheduler
 from torch.utils.tensorboard import SummaryWriter

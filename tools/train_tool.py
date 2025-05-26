@@ -7,7 +7,6 @@ from collections import defaultdict
 from timeit import default_timer as timer  # 确保这一行存在
 
 import torch
-from sympy import im
 
 # 添加混合精度训练所需的导入
 from torch.amp import GradScaler, autocast  # 从torch.amp导入而不是torch.cuda.amp
@@ -39,6 +38,12 @@ def train(parameters, config, gpu_list, do_test=False):
     logger.info(f"开始训练: {start_epoch} -> {config.getint('train', 'epoch')} epochs")
 
     # —— 2. 主循环 ——
+    # 在循环开始前先定义输出路径，确保它始终存在
+    output_path = os.path.join(config.get("output", "model_path"), config.get("output", "model_name"))
+    if os.path.exists(output_path):
+        logger.warning("Output path exists, check whether need to change a name of model")
+    os.makedirs(output_path, exist_ok=True)
+
     for epoch in range(start_epoch, config.getint("train", "epoch")):
         # 输出 epoch 开始时间
         epoch_start_time = timer()
@@ -118,16 +123,19 @@ def train(parameters, config, gpu_list, do_test=False):
             scheduler.step()
 
         # 周期性保存模型 (添加时间计时)
-        if epoch % config.getint("output", "output_time") == 0:
+        if epoch % config.getint("output", "output_time") == 0 or epoch == config.getint("train", "epoch") - 1:
             logger.info(f"保存模型检查点: Epoch {epoch+1}")
             save_start_time = timer()
 
-            output_path = os.path.join(config.get("output", "model_path"), config.get("output", "model_name"))
-            if os.path.exists(output_path):
-                logger.warning("Output path exists, check whether need to change a name of model")
-            os.makedirs(output_path, exist_ok=True)
+            # 为最后一轮添加特殊标记
+            if epoch == config.getint("train", "epoch") - 1:
+                save_filename = f"{epoch}_final.pkl"
+                logger.info("保存最终模型...")
+            else:
+                save_filename = f"{epoch}.pkl"
+
             checkpoint(
-                os.path.join(output_path, "%d.pkl" % epoch),
+                os.path.join(output_path, save_filename),
                 model,
                 optimizer,
                 epoch,
@@ -143,6 +151,7 @@ def train(parameters, config, gpu_list, do_test=False):
     # —— 3. 收尾 ——
     total_train_time = timer() - train_start_time
     logger.info(f"训练完成! 总耗时: {gen_time_str(total_train_time)}")
+
     writer.close()
     torch.cuda.empty_cache()  # 清空 CUDA 缓存
     return model, optimizer, global_step
