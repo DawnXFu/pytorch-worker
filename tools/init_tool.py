@@ -4,12 +4,13 @@ import shutil
 from timeit import default_timer as timer
 
 import torch
-from model import get_model
-from model.optimizer import init_optimizer
-from reader.reader import init_dataset, init_test_dataset
 from torch.amp import GradScaler
 from torch.optim import lr_scheduler
 from torch.utils.tensorboard import SummaryWriter
+
+from model import get_model
+from model.optimizer import init_optimizer
+from reader.reader import init_dataset, init_test_dataset
 
 from .output_init import init_output_function
 
@@ -47,88 +48,74 @@ def init_all(config, gpu_list, mode, *args, **params):
         "CC": "metrics/correlation_coefficient",
         "RMSE": "metrics/root_mean_square_error",
         "KGE": "metrics/kling_gupta_efficiency",
-        "POD_moderate_rain": "metrics/probability_of_detection_moderate",
-        "FAR_moderate_rain": "metrics/false_alarm_ratio_moderate",
-        "TS_heavy_rain": "metrics/threat_score_heavy",
+        "POD_light_rain": "metrics/probability_of_detection_light",
+        "FAR_light_rain": "metrics/false_alarm_ratio_light",
+        "TS_light_rain": "metrics/threat_score_light",
+        "BIAS_light_rain": "metrics/bias_light_rain",
+        "POD_heavy_rain": "metrics/probability_of_detection_heavy",
     }
 
-    if mode == "test":
-        # 初始化 ckpt_path 为 None
-        ckpt_path = None
-        # 使用checkpoint参数或检查配置文件
-        if config.has_option("eval", "resume_checkpoint"):
-            ckpt_path = config.get("eval", "resume_checkpoint")
+    # optimizer
+    optimizer = init_optimizer(model, config, **params)
+    result["optimizer"] = optimizer
 
-        if ckpt_path:
-            if not os.path.isabs(ckpt_path):
-                ckpt_path = os.path.join(
-                    config.get("output", "model_path"), config.get("output", "model_name"), ckpt_path
-                )
-            if os.path.exists(ckpt_path):
-                logger.info(f"Loading checkpoint for test from {ckpt_path}")
-                # 仅加载模型权重
-                load_checkpoint(
-                    ckpt_path, model=model, map_location=device, optimizer=None, scheduler=None, scaler=None
-                )
-            else:
-                logger.warning(f"Test checkpoint not found: {ckpt_path}")
-    # —— 3. 训练模式下的额外初始化 ——
-    elif mode == "train":
-        # optimizer
-        optimizer = init_optimizer(model, config, **params)
-        result["optimizer"] = optimizer
+    # scaler（AMP）
+    use_amp = config.getboolean("train", "use_amp", fallback=True) and gpu_list
+    if use_amp:
+        scaler = GradScaler("cpu" if not gpu_list else "cuda")
+        result["scaler"] = scaler
+    else:
+        scaler = None
+        result["scaler"] = None
 
-        # scaler（AMP）
-        use_amp = config.getboolean("train", "use_amp", fallback=True) and gpu_list
-        if use_amp:
-            scaler = GradScaler("cpu" if not gpu_list else "cuda")
-            result["scaler"] = scaler
+    scheduler = get_lr_scheduler(optimizer, config)
+
+    result["scheduler"] = scheduler
+    # 从 checkpoint 恢复
+    result["start_epoch"] = 0
+    result["global_step"] = 0
+
+    # 使用checkpoint参数或检查配置文件
+    if config.has_option("train", "resume_checkpoint"):
+        ckpt_path = config.get("train", "resume_checkpoint")
+        if os.path.exists(ckpt_path):
+            logger.info(f"Loading checkpoint from {ckpt_path}")
+            ckpt_data = load_checkpoint(
+                ckpt_path, model=model, optimizer=optimizer, scheduler=scheduler, scaler=scaler, map_location=device
+            )
+
+            result["start_epoch"] = ckpt_data["epoch"]
+            result["global_step"] = ckpt_data["global_step"]
+            if not ckpt_data["scheduler"]:
+                # 如果没有加载调度器状态，则重新初始化
+                scheduler = get_lr_scheduler(optimizer, config, last_epoch=ckpt_data["epoch"])
+                # OneCycleLR 重新设置 total_steps
+                if isinstance(scheduler, lr_scheduler.OneCycleLR):
+                    steps = len(result["train_dataset"]) // config.getint("train", "grad_accumulation_steps")
+                    scheduler.total_steps = steps * (config.getint("train", "epoch") - result["start_epoch"])
+                    logger.info(f"OneCycleLR total_steps set to {scheduler.total_steps}")
+                result["scheduler"] = scheduler
+
+            logger.info(f"Resumed at epoch={result['start_epoch']}, global_step={result['global_step']}")
         else:
-            scaler = None
-            result["scaler"] = None
+            logger.warning(f"Checkpoint not found: {ckpt_path}, start from scratch.")
 
-        scheduler = get_lr_scheduler(optimizer, config)
-
-        result["scheduler"] = scheduler
-        # 从 checkpoint 恢复
-        result["start_epoch"] = 0
-        result["global_step"] = 0
-
-        # 使用checkpoint参数或检查配置文件
-        if config.has_option("train", "resume_checkpoint"):
-            ckpt_path = config.get("train", "resume_checkpoint")
-            if os.path.exists(ckpt_path):
-                logger.info(f"Loading checkpoint from {ckpt_path}")
-                ckpt_data = load_checkpoint(
-                    ckpt_path, model=model, optimizer=optimizer, scheduler=scheduler, scaler=scaler, map_location=device
-                )
-
-                result["start_epoch"] = ckpt_data["epoch"]
-                result["global_step"] = ckpt_data["global_step"]
-                if not ckpt_data["scheduler"]:
-                    # 如果没有加载调度器状态，则重新初始化
-                    scheduler = get_lr_scheduler(optimizer, config, last_epoch=ckpt_data["epoch"])
-                    # OneCycleLR 重新设置 total_steps
-                    if isinstance(scheduler, lr_scheduler.OneCycleLR):
-                        steps = len(result["train_dataset"]) // config.getint("train", "grad_accumulation_steps")
-                        scheduler.total_steps = steps * (config.getint("train", "epoch") - result["start_epoch"])
-                        logger.info(f"OneCycleLR total_steps set to {scheduler.total_steps}")
-                    result["scheduler"] = scheduler
-
-                logger.info(f"Resumed at epoch={result['start_epoch']}, global_step={result['global_step']}")
-            else:
-                logger.warning(f"Checkpoint not found: {ckpt_path}, start from scratch.")
-
+    if mode == "train":
         # TensorBoard
         tb_path = os.path.join(config.get("output", "tensorboard_path"), config.get("output", "model_name"))
-        if result["start_epoch"] == 0 and os.path.isdir(tb_path):
+        if result.get("start_epoch", 0) == 0 and os.path.isdir(tb_path):
             shutil.rmtree(tb_path)
+            os.makedirs(tb_path)
+        writer = SummaryWriter(tb_path, config.get("output", "model_name"))
+        logger.info(f"TensorBoard logs → {tb_path}")
+        result["writer"] = writer
+    else:
+        tb_path = os.path.join(config.get("output", "tensorboard_path"), config.get("output", "model_name"), "test")
         os.makedirs(tb_path, exist_ok=True)
-
-    writer = SummaryWriter(tb_path, config.get("output", "model_name"))
-    logger.info(f"TensorBoard logs → {tb_path}")
-    result["writer"] = writer
-
+        writer = SummaryWriter(tb_path, config.get("output", "model_name"))
+        logger.info(f"TensorBoard logs → {tb_path}")
+        result["writer"] = writer
+    # —— 3. 训练模式下的额外初始化 ——
     return result
 
 

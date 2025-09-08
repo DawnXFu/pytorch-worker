@@ -43,10 +43,11 @@ class UNetDataset(Dataset):
             try:
                 with xr.open_dataset(file_path) as ds:
                     time_points = len(ds.time)
+                    times = ds.time.values  # 获取时间数组
 
                     # 每个时间点作为一个独立样本
                     for time_idx in range(time_points):
-                        self.sample_map.append((file_idx, time_idx))
+                        self.sample_map.append((file_idx, time_idx, times[time_idx]))
             except Exception as e:
                 print(f"警告: 无法读取文件 {file_path}: {e}")
 
@@ -56,7 +57,7 @@ class UNetDataset(Dataset):
         print(f"{mode}数据集: 共加载了 {len(self.data_list)} 个文件, 总样本数: {len(self.sample_map)}")
 
     def __getitem__(self, index):
-        file_idx, time_idx = self.sample_map[index]
+        file_idx, time_idx, timestamp = self.sample_map[index]
         filename = self.data_list[file_idx]
         file_path = os.path.join(self.data_path, filename)
 
@@ -83,7 +84,7 @@ class UNetDataset(Dataset):
         features = torch.from_numpy(features).float()
         label = torch.from_numpy(label).float()
 
-        return {"data": features, "label": label}
+        return {"data": features, "label": label, "timestamp": timestamp}
 
     def __len__(self):
         return len(self.sample_map)

@@ -90,9 +90,9 @@ class UNET(nn.Module):
             if mode == "train":
                 return {"loss": loss, "acc_result": acc_result}
             else:
-                return {"loss": loss, "acc_result": acc_result, "output": out, "label": label}
+                return {"loss": loss, "acc_result": acc_result, "output": out, "label": label, "timestamp": data["timestamp"]}
         else:
-            return {"loss": loss, "acc_result": acc_result, "output": out}
+            return {"loss": loss, "acc_result": acc_result, "output": out, "timestamp": data["timestamp"]}
 
     def criterion(self, x, label):
         # 修改损失函数

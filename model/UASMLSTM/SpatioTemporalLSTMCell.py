@@ -27,6 +27,7 @@ class SMLSTMCell(nn.Module):
         self.padding = filter_size // 2
         self.layer_norm = layer_norm
         self._forget_bias = forget_bias
+        self.device = device
 
         if layer_norm:
             self.conv_x = nn.Sequential(
@@ -34,58 +35,56 @@ class SMLSTMCell(nn.Module):
                     num_hidden_in, num_hidden * 7, kernel_size=filter_size, stride=1, padding=self.padding
                 ),
                 nn.LayerNorm([num_hidden * 7, self.height, self.width]),
-            ).to(device)
+            )
             self.conv_h = nn.Sequential(
                 DepthwiseSeparableConv(
                     num_hidden, num_hidden * 4, kernel_size=filter_size, stride=1, padding=self.padding
                 ),
                 nn.LayerNorm([num_hidden * 4, self.height, self.width]),
-            ).to(device)
+            )
             self.conv_c = nn.Sequential(
                 DepthwiseSeparableConv(
                     num_hidden, num_hidden * 3, kernel_size=filter_size, stride=1, padding=self.padding
                 ),
                 nn.LayerNorm([num_hidden * 3, self.height, self.width]),
-            ).to(device)
+            )
             self.conv_m = nn.Sequential(
                 DepthwiseSeparableConv(
                     num_hidden, num_hidden * 3, kernel_size=filter_size, stride=1, padding=self.padding
                 ),
                 nn.LayerNorm([num_hidden * 3, self.height, self.width]),
-            ).to(device)
+            )
             self.conv_c2m = nn.Sequential(
                 DepthwiseSeparableConv(
                     num_hidden, num_hidden * 4, kernel_size=filter_size, stride=1, padding=self.padding
                 ),
                 nn.LayerNorm([num_hidden * 4, self.height, self.width]),
-            ).to(device)
+            )
             self.conv_m2o = nn.Sequential(
                 DepthwiseSeparableConv(num_hidden, num_hidden, kernel_size=filter_size, stride=1, padding=self.padding),
                 nn.LayerNorm([num_hidden, self.height, self.width]),
-            ).to(device)
+            )
         else:
             self.conv_x = DepthwiseSeparableConv(
                 num_hidden_in, num_hidden * 7, kernel_size=filter_size, stride=1, padding=self.padding
-            ).to(device)
+            )
             self.conv_h = DepthwiseSeparableConv(
                 num_hidden, num_hidden * 4, kernel_size=filter_size, stride=1, padding=self.padding
-            ).to(device)
+            )
             self.conv_c = DepthwiseSeparableConv(
                 num_hidden, num_hidden * 3, kernel_size=filter_size, stride=1, padding=self.padding
-            ).to(device)
+            )
             self.conv_m = DepthwiseSeparableConv(
                 num_hidden, num_hidden * 3, kernel_size=filter_size, stride=1, padding=self.padding
-            ).to(device)
+            )
             self.conv_c2m = DepthwiseSeparableConv(
                 num_hidden, num_hidden * 4, kernel_size=filter_size, stride=1, padding=self.padding
-            ).to(device)
+            )
             self.conv_m2o = DepthwiseSeparableConv(
                 num_hidden, num_hidden, kernel_size=filter_size, stride=1, padding=self.padding
-            ).to(device)
+            )
 
-        self.conv_last = nn.Conv2d(num_hidden * 2, num_hidden, kernel_size=1, stride=1, padding=0, bias=False).to(
-            device
-        )
+        self.conv_last = nn.Conv2d(num_hidden * 2, num_hidden, kernel_size=1, stride=1, padding=0, bias=False)
 
     def forward(self, x_t, h_t, c_t, m_t):
         if h_t is None:

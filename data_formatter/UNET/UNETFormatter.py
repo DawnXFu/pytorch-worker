@@ -10,9 +10,10 @@ class UNETFormatter:
     def process(self, data, config, mode, *args, **params):
         input_data = []
         label_data = []
-
+        input_timestamp = []
         for temp in data:
             input_data.append(temp["data"])
+            input_timestamp.append(temp["timestamp"])
             if mode != "infer":
                 label_data.append(temp["label"])
 
@@ -25,6 +26,6 @@ class UNETFormatter:
             # 将label_data中的nan值替换为0
             label_data = torch.nan_to_num(label_data, nan=0.0)
 
-            return {"input": input_data, "label": label_data}
+            return {"input": input_data, "label": label_data, "timestamp": input_timestamp}
         else:
-            return {"input": input_data}
+            return {"input": input_data, "timestamp": input_timestamp}

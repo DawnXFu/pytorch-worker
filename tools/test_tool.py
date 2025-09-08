@@ -4,13 +4,15 @@ from collections import defaultdict
 from timeit import default_timer as timer
 
 import torch
-from tools.eval_tool import gen_time_str, output_value
+import numpy as np
 from torch.autograd import Variable
+
+from tools.eval_tool import gen_time_str, output_value
 
 logger = logging.getLogger(__name__)
 
 
-def test(parameters, config, gpu_list):
+def test(parameters, config, gpu_list, output):
     model = parameters["model"]
     dataset = parameters["test_dataset"]
     writer = parameters["writer"]
@@ -27,8 +29,11 @@ def test(parameters, config, gpu_list):
     total_loss = 0
     acc_result = None
     total_samples = 0
-    total_outputs = []
-    total_labels = []
+    
+    # 初始化收集数据的列表
+    all_outputs = []
+    all_labels = []
+    all_timestamps = []
 
     total_batches = len(dataset)
     log_interval = max(1, total_batches // 10)
@@ -58,12 +63,16 @@ def test(parameters, config, gpu_list):
             total_samples += batch_size
 
             acc_result = results["acc_result"]
-
-            # 保存 output 和 label
-            total_outputs.append(results["output"].cpu())
-            total_labels.append(results["label"].cpu())
-
-            tb_cache["valid_loss"].append((step, loss_val))
+            
+            # 收集输出、标签和时间戳
+            if "output" in results and "label" in results and "timestamp" in data:
+                # 确保数据在CPU上并转换为numpy数组
+                output_cpu = results["output"].cpu().numpy() if isinstance(results["output"], torch.Tensor) else results["output"]
+                label_cpu = results["label"].cpu().numpy() if isinstance(results["label"], torch.Tensor) else results["label"]
+                
+                all_outputs.append(output_cpu)
+                all_labels.append(label_cpu)
+                all_timestamps.extend(data["timestamp"])
 
             flush_cache(
                 tb_cache,
@@ -102,11 +111,17 @@ def test(parameters, config, gpu_list):
         config,
     )
 
+    # 将收集的数据转换为numpy数组（如果不是的话）
+    if all_outputs and all_labels:
+        all_outputs = np.concatenate(all_outputs, axis=0)
+        all_labels = np.concatenate(all_labels, axis=0)
+
     return {
         "loss": avg_loss,
         "acc_result": acc_result,
-        "total_outputs": total_outputs,
-        "total_labels": total_labels,
+        "predictions": all_outputs,
+        "labels": all_labels,
+        "timestamps": all_timestamps
     }
 
 

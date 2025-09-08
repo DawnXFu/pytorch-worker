@@ -16,7 +16,7 @@ class PreCorrectDataset(Dataset):
         self.seq_len = config.getint("model", "seq_length")
         self.feature_vars = params.get("feature_vars", ["TAIR", "UWIN", "VWIN", "PRE"])
         self.target_var = params.get("target_var", "corrected_precip")
-        self.stride = params.get("stride", 3)
+        self.stride = params.get("stride", 1)
         if hasattr(config, "getint") and config.has_option("model", "stride"):
             self.stride = config.getint("model", "stride")
         self.max_open_files = params.get("max_open_files", 5)
@@ -92,7 +92,13 @@ class PreCorrectDataset(Dataset):
             if self.target_var in ds
             else np.zeros(self.grid_shape, dtype=np.float32)
         )
-        return {"data": torch.from_numpy(features).float(), "label": torch.from_numpy(label).float()}
+        # 获取标签对应的时间戳
+        timestamp = self.file_time_map[label_global_idx][2]
+        return {
+            "data": torch.from_numpy(features).float(), 
+            "label": torch.from_numpy(label).float(),
+            "timestamp": timestamp
+        }
 
     def __len__(self):
         return len(self.sample_map)

@@ -207,9 +207,9 @@ class ConvLSTMModel(nn.Module):
             if mode == "train":
                 return {"loss": loss, "acc_result": acc_result}
             else:
-                return {"loss": loss, "acc_result": acc_result, "output": x, "label": label}
+                return {"loss": loss, "acc_result": acc_result, "output": x, "label": label, "timestamp": data["timestamp"]}
         else:
-            return {"loss": None, "acc_result": acc_result, "output": x}
+            return {"loss": None, "acc_result": acc_result, "output": x, "timestamp": data["timestamp"]}
 
     def criterion(self, x, label):
         # 引入权重调整不同降水等级的损失贡献

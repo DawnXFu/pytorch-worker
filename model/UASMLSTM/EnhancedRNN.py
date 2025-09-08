@@ -58,6 +58,7 @@ class EnhancedRNN(nn.Module):
                     filter_size=kernel_size,
                     layer_norm=layer_norm,
                     forget_bias=1.0,
+                    device=self.device,
                 )
             )
 
@@ -69,7 +70,10 @@ class EnhancedRNN(nn.Module):
         # 输出卷积
         self.conv_last = nn.Conv2d(
             num_hidden[num_layers - 1], self.img_channel, kernel_size=1, stride=1, padding=0, bias=False
-        ).to(self.device)
+        )
+        
+        # 将整个模型移动到指定设备
+        self.to(self.device)
 
     def forward(self, frames_tensor):
         frames = frames_tensor.to(self.device)
@@ -183,6 +187,7 @@ class RNN(nn.Module):
                     filter_size=kernel_size,
                     layer_norm=layer_norm,
                     forget_bias=1.0,
+                    device=self.device,
                 )
             )
             self.attentioncell.append(CBAMBlock(num_hidden[i]))
@@ -190,7 +195,10 @@ class RNN(nn.Module):
         self.ghu = GHU(num_hidden[0], img_width, img_height, kernel_size, layer_norm)
         self.conv_last = nn.Conv2d(
             num_hidden[num_layers - 1], self.img_channel, kernel_size=1, stride=1, padding=0, bias=False
-        ).to(self.device)
+        )
+        
+        # 将整个模型移动到指定设备
+        self.to(self.device)
 
     def forward(self, frames_tensor):
         # [batch, length, channel, height, width]
